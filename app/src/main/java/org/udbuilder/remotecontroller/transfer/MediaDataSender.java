@@ -80,7 +80,7 @@ public class MediaDataSender {
         mQuit.set(true);
     }
 
-    private void release() {
+    public void release() {
         if (mEncoder != null) {
             mEncoder.stop();
             mEncoder.release();
@@ -98,6 +98,7 @@ public class MediaDataSender {
     private final class UDPSender extends Thread {
         private LinkedBlockingDeque<ScreenData> mFrameQueue;
         private DatagramSocket mSocket;
+        private InetAddress mInetAddr;
 
         UDPSender() {
             super("UDPSender");
@@ -109,9 +110,10 @@ public class MediaDataSender {
 
             try {
                 // 根据主机名称得到IP地址
-                InetSocketAddress address = new InetSocketAddress(mIp, Constant.PORT_SEND_DATA);
+                mInetAddr = InetAddress.getByName(mIp);
                 // 创建数据报文套接字并通过它传送
-                mSocket = new DatagramSocket(address);
+                mSocket = new DatagramSocket();
+                mSocket.setSoTimeout(3000);
 
                 while (!mQuit.get()) {
                     int eobIndex = mEncoder.dequeueOutputBuffer(mBufferInfo, Constant.TIMEOUT_US);
@@ -153,7 +155,6 @@ public class MediaDataSender {
                     mSocket = null;
                 }
                 mFrameQueue.clear();
-                release();
             }
         }
 
@@ -162,7 +163,7 @@ public class MediaDataSender {
             LogUtil.d(TAG, "sendRealData length=" + length + " time=" + time);
             byte[] data = new byte[length];
             realData.get(data, 0, length);
-            DatagramPacket packet = new DatagramPacket(data, data.length);
+            DatagramPacket packet = new DatagramPacket(data, data.length, mInetAddr, Constant.PORT_SEND_DATA);
             try {
                 mSocket.send(packet);
             } catch (Exception e) {

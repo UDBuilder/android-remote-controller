@@ -12,6 +12,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 
 import org.udbuilder.remotecontroller.R;
+import org.udbuilder.remotecontroller.transfer.MediaDataReceiver;
 import org.udbuilder.remotecontroller.transfer.MediaDataSender;
 import org.udbuilder.remotecontroller.utils.LogUtil;
 
@@ -31,6 +32,7 @@ public class SenderActivity extends AppCompatActivity {
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_sender);
+        new MediaDataReceiver().start();
     }
 
     public void onStartShareScreen(View view) {
@@ -63,5 +65,13 @@ public class SenderActivity extends AppCompatActivity {
             mSender = new MediaDataSender(mp, null);
         }
         mSender.start();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mSender != null) {
+            mSender.release();
+        }
     }
 }

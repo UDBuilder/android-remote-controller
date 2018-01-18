@@ -11,12 +11,14 @@
         android:id="@+id/btn_sender"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:onClick="onLaunchSender"
         android:text="Sender" />
 
     <Button
         android:id="@+id/btn_receiver"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:onClick="onLaunchReceiver"
         android:text="Receiver" />
 
 </LinearLayout>
