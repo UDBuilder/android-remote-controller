@@ -2,40 +2,55 @@ package org.udbuilder.remotecontroller.ui;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
-import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
+import android.util.DisplayMetrics;
 import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
 
 import org.udbuilder.remotecontroller.R;
-import org.udbuilder.remotecontroller.transfer.MediaDataReceiver;
 import org.udbuilder.remotecontroller.transfer.MediaDataSender;
+import org.udbuilder.remotecontroller.transfer.TransferListener;
 import org.udbuilder.remotecontroller.utils.LogUtil;
 
 /**
  * Created by xiongjianbo on 2018/1/18.
  */
 
-public class SenderActivity extends AppCompatActivity {
+public class SenderActivity extends AppCompatActivity implements TransferListener {
 
     private static final String TAG = "SenderActivity";
 
     private MediaProjectionManager mMediaProjectionMgr;
     private MediaDataSender mSender;
     private boolean mRunning = false;
+    private Button mBtn;
+    private EditText mText;
+
+    private int mWidth;
+    private int mHeight;
+    private int mDpi;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_sender);
-        new MediaDataReceiver().start();
+        mBtn = (Button) findViewById(R.id.btn_execute);
+        mText = findViewById(R.id.ip);
+
+        DisplayMetrics dm  = this.getResources().getDisplayMetrics();
+        mDpi = dm.densityDpi;
+        mWidth = dm.widthPixels;
+        mHeight = dm.heightPixels;
     }
 
-    public void onStartShareScreen(View view) {
+
+    public void onActionExecute(View view) {
         mRunning = !mRunning;
         if (mRunning) {
             if (mMediaProjectionMgr == null) {
@@ -44,12 +59,14 @@ public class SenderActivity extends AppCompatActivity {
             if (mMediaProjectionMgr != null) {
                 startActivityForResult(mMediaProjectionMgr.createScreenCaptureIntent(), 1);
             } else {
-                LogUtil.e(TAG, "onStartShareScreen mMediaProjectionMgr is null");
+                LogUtil.e(TAG, "onActionExecute mMediaProjectionMgr is null");
             }
+            mBtn.setText("Stop");
         } else {
             if (mSender != null) {
                 mSender.stop();
             }
+            mBtn.setText("Start");
         }
     }
 
@@ -62,9 +79,10 @@ public class SenderActivity extends AppCompatActivity {
         }
         if (mSender == null) {
             MediaProjection mp = mMediaProjectionMgr.getMediaProjection(resultCode, data);
-            mSender = new MediaDataSender(mp, null);
+            mSender = new MediaDataSender(mp, mText.getText().toString(), this, mWidth, mHeight, mDpi);
         }
         mSender.start();
+
     }
 
     @Override
@@ -73,5 +91,20 @@ public class SenderActivity extends AppCompatActivity {
         if (mSender != null) {
             mSender.release();
         }
+    }
+
+    @Override
+    public void transferStart(Bundle bundle) {
+
+    }
+
+    @Override
+    public void transferError(Bundle bundle) {
+
+    }
+
+    @Override
+    public void transferCompleted(Bundle bundle) {
+
     }
 }

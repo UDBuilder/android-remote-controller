@@ -26,6 +26,6 @@
         android:id="@+id/btn_execute"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:onClick="onStartShareScreen"
+        android:onClick="onActionExecute"
         android:text="Start" />
 </LinearLayout>
