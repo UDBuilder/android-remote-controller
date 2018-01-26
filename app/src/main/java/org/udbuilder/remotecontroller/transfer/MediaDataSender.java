@@ -44,6 +44,8 @@ public class MediaDataSender extends Transfer{
     private int mHeight;
     private int mDpi;
 
+    private EventReceiver mEventReceiver;
+
     public MediaDataSender(MediaProjection mp, String ip, TransferListener listener,
                            int width, int height, int dpi) {
         super(listener);
@@ -77,7 +79,7 @@ public class MediaDataSender extends Transfer{
             prepareEncoder();
             mVirtualDisplay = mMediaProjection.createVirtualDisplay(TAG + "-display",
                     mWidth, mHeight, mDpi,
-                    DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     mSurface, null, null);
             LogUtil.d(TAG, "created virtual display: " + mVirtualDisplay);
             mSender.start();
@@ -88,6 +90,9 @@ public class MediaDataSender extends Transfer{
 
     public void stop() {
         mQuit.set(true);
+        if (mEventReceiver != null) {
+            mEventReceiver.release();
+        }
     }
 
     public void release() {
@@ -227,6 +232,10 @@ public class MediaDataSender extends Transfer{
         public void run() {
             try {
                 mSocket = new Socket(mIp, Constant.PORT_SEND_DATA);
+
+                mEventReceiver = new EventReceiver(mSocket);
+                mEventReceiver.start();
+
                 mOutputStream = mSocket.getOutputStream();
 
                 mListener.transferStart(null);

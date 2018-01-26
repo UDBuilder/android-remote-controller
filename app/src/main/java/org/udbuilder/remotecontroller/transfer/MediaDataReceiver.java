@@ -38,11 +38,19 @@ public class MediaDataReceiver extends Transfer {
     private int mWidth;
     private int mHeight;
 
+    private EventSendor mEventSendor;
+
     public MediaDataReceiver(Surface surface, TransferListener listener) {
         super(listener);
         mSurface = surface;
 //        mReceiver = new UDPReceiver();
         mReceiver = new TCPReceiver();
+    }
+
+    public void sendEvent(Event event) {
+        if (mEventSendor != null) {
+            mEventSendor.sendEvent(event);
+        }
     }
 
     public void start() {
@@ -136,6 +144,9 @@ public class MediaDataReceiver extends Transfer {
 
     public void stop() {
         mQuit.set(true);
+        if (mEventSendor != null) {
+            mEventSendor.release();
+        }
     }
 
     public void release() {
@@ -297,160 +308,172 @@ public class MediaDataReceiver extends Transfer {
             InputStream inputStream = null;
             try {
                 serverSocket = new ServerSocket(Constant.PORT_SEND_DATA);
-                socket = serverSocket.accept();
-                inputStream = socket.getInputStream();
-                byte[] buffers = new byte[50000];
-                int stamp;
-                int length;
-                boolean mWaitingKeyFrame = true;
-                boolean mm;
-                int index;
-                long previewStampUs = 0L;
 
-                // read width and height at first time
-                StreamUtils.readData(inputStream, buffers, 4);
-                mWidth = ByteArrayUtil.getIntFromByteArray(buffers, 0);
-                StreamUtils.readData(inputStream, buffers, 4);
-                mHeight = ByteArrayUtil.getIntFromByteArray(buffers, 0);
-                LogUtil.d(TAG, String.format("screen width:%s, height:%s", mWidth, mHeight));
+                while (!mQuit.get()) {
+                    try {
+                        socket = serverSocket.accept();
 
-                Bundle bundle = new Bundle();
-                bundle.putInt(Constant.BUNDLE_WIDTH, mWidth);
-                bundle.putInt(Constant.BUNDLE_HEIGHT, mHeight);
-                mListener.transferStart(bundle);
+                        mEventSendor = new EventSendor(socket);
+                        mEventSendor.start();
 
-                while (!mQuit.get() && socket.isConnected()) {
+                        inputStream = socket.getInputStream();
+                        byte[] buffers = new byte[50000];
+                        int stamp;
+                        int length;
+                        boolean mWaitingKeyFrame = true;
+                        boolean mm;
+                        int index;
+                        long previewStampUs = 0L;
 
-                    // read timestamp
-                    StreamUtils.readData(inputStream, buffers, 4);
-                    stamp = ByteArrayUtil.getIntFromByteArray(buffers, 0);
+                        // read width and height at first time
+                        StreamUtils.readData(inputStream, buffers, 4);
+                        mWidth = ByteArrayUtil.getIntFromByteArray(buffers, 0);
+                        StreamUtils.readData(inputStream, buffers, 4);
+                        mHeight = ByteArrayUtil.getIntFromByteArray(buffers, 0);
+                        LogUtil.d(TAG, String.format("screen width:%s, height:%s", mWidth, mHeight));
 
-                    // read length of frame
-                    StreamUtils.readData(inputStream, buffers, 4);
-                    length = ByteArrayUtil.getIntFromByteArray(buffers, 0);
+                        Bundle bundle = new Bundle();
+                        bundle.putInt(Constant.BUNDLE_WIDTH, mWidth);
+                        bundle.putInt(Constant.BUNDLE_HEIGHT, mHeight);
+                        mListener.transferStart(bundle);
 
-                    LogUtil.d(TAG, String.format("stamp:%s, length:%s", stamp, length));
+                        while (socket.isConnected()) {
 
-                    // read frame
-                    if (length > buffers.length) {
-                        buffers = new byte[length];
-                    }
-                    int len = StreamUtils.readData(inputStream, buffers, length);
-                    if (len != length) {
-                        throw new Exception(String.format("unexpected data length," +
-                                " expect:%s, but actually:%s", length, len));
-                    }
+                            // read timestamp
+                            StreamUtils.readData(inputStream, buffers, 4);
+                            stamp = ByteArrayUtil.getIntFromByteArray(buffers, 0);
 
-                    // wait key frame to get CSD-0
-                    if (mWaitingKeyFrame) {
-                        byte[] dataOut = new byte[128];
-                        int[] outLen = new int[]{128};
-                        int result = getXPS(buffers, 0, 256, dataOut, outLen, 7);
-                        if (result >= 0) {
-                            ByteBuffer csd0 = ByteBuffer.allocate(outLen[0]);
-                            csd0.put(dataOut, 0, outLen[0]);
-                            csd0.clear();
-                            mCSD0 = csd0;
-                            LogUtil.i(TAG, "CSD-0 searched");
-                        }
-                        outLen[0] = 128;
-                        result = getXPS(buffers, 0, 256, dataOut, outLen, 8);
-                        if (result >= 0) {
-                            ByteBuffer csd1 = ByteBuffer.allocate(outLen[0]);
-                            csd1.put(dataOut, 0, outLen[0]);
-                            csd1.clear();
-                            mCSD1 = csd1;
-                            LogUtil.i(TAG, "CSD-1 searched");
-                        }
-                        mWaitingKeyFrame = false;
-                        // init decoder
-                        prepareDecoder();
-                    }
+                            // read length of frame
+                            StreamUtils.readData(inputStream, buffers, 4);
+                            length = ByteArrayUtil.getIntFromByteArray(buffers, 0);
 
-                    if (mDecoder == null) {
-                        LogUtil.w(TAG, "Decoder hasn't been initialized");
-                        continue;
-                    }
+                            LogUtil.d(TAG, String.format("stamp:%s, length:%s", stamp, length));
 
-                    mm = true;
-                    do {
-                        if (mm && length > 0) {
-                            index = mDecoder.dequeueInputBuffer(10);
-                            if (index >= 0) {
-                                ByteBuffer buffer = mDecoder.getInputBuffer(index);
-                                buffer.clear();
-                                if (length > buffer.remaining()) {
-                                    mDecoder.queueInputBuffer(index, 0, 0, stamp, 0);
-                                } else {
-                                    buffer.put(buffers, 0, length);
-                                    mDecoder.queueInputBuffer(index, 0, buffer.position(), stamp, 0);
+                            // read frame
+                            if (length > buffers.length) {
+                                buffers = new byte[length];
+                            }
+                            int len = StreamUtils.readData(inputStream, buffers, length);
+                            if (len != length) {
+                                throw new Exception(String.format("unexpected data length," +
+                                        " expect:%s, but actually:%s", length, len));
+                            }
+
+                            // wait key frame to get CSD-0
+                            if (mWaitingKeyFrame) {
+                                byte[] dataOut = new byte[128];
+                                int[] outLen = new int[]{128};
+                                int result = getXPS(buffers, 0, 256, dataOut, outLen, 7);
+                                if (result >= 0) {
+                                    ByteBuffer csd0 = ByteBuffer.allocate(outLen[0]);
+                                    csd0.put(dataOut, 0, outLen[0]);
+                                    csd0.clear();
+                                    mCSD0 = csd0;
+                                    LogUtil.i(TAG, "CSD-0 searched");
                                 }
-                                mm = false;
+                                outLen[0] = 128;
+                                result = getXPS(buffers, 0, 256, dataOut, outLen, 8);
+                                if (result >= 0) {
+                                    ByteBuffer csd1 = ByteBuffer.allocate(outLen[0]);
+                                    csd1.put(dataOut, 0, outLen[0]);
+                                    csd1.clear();
+                                    mCSD1 = csd1;
+                                    LogUtil.i(TAG, "CSD-1 searched");
+                                }
+                                mWaitingKeyFrame = false;
+                                // init decoder
+                                prepareDecoder();
+                            }
+
+                            if (mDecoder == null) {
+                                LogUtil.w(TAG, "Decoder hasn't been initialized");
+                                continue;
+                            }
+
+                            mm = true;
+                            do {
+                                if (mm && length > 0) {
+                                    index = mDecoder.dequeueInputBuffer(10);
+                                    if (index >= 0) {
+                                        ByteBuffer buffer = mDecoder.getInputBuffer(index);
+                                        buffer.clear();
+                                        if (length > buffer.remaining()) {
+                                            mDecoder.queueInputBuffer(index, 0, 0, stamp, 0);
+                                        } else {
+                                            buffer.put(buffers, 0, length);
+                                            mDecoder.queueInputBuffer(index, 0, buffer.position(), stamp, 0);
+                                        }
+                                        mm = false;
+                                    }
+                                }
+
+                                index = mDecoder.dequeueOutputBuffer(mBuffInfo, 10); //
+                                switch (index) {
+                                    case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
+                                        LogUtil.i(TAG, "INFO_OUTPUT_BUFFERS_CHANGED");
+                                        break;
+                                    case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
+                                        MediaFormat mf = mDecoder.getOutputFormat();
+                                        LogUtil.i(TAG, "INFO_OUTPUT_FORMAT_CHANGED ：" + mf);
+                                        break;
+                                    case MediaCodec.INFO_TRY_AGAIN_LATER:
+                                        LogUtil.i(TAG, "INFO_TRY_AGAIN_LATER");
+                                        // 输出为空
+                                        break;
+                                    default:
+                                        long newSleepUs = -1;
+                                        boolean firstTime = previewStampUs == 0L;
+                                        if (!firstTime) {
+                                            long sleepUs = (mBuffInfo.presentationTimeUs - previewStampUs);
+                                            if (sleepUs > 50000) {
+                                                // 时间戳异常，可能服务器丢帧了。
+                                                LogUtil.w(TAG, "sleep time.too long:" + sleepUs);
+                                                sleepUs = 50000;
+                                            }
+                                            {
+                                                long cache = stamp - previewStampUs;
+                                                newSleepUs = fixSleepTime(sleepUs, cache, -100000);
+                                                // Log.d(TAG, String.format("sleepUs:%d,newSleepUs:%d,Cache:%d", sleepUs, newSleepUs, cache));
+                                                LogUtil.d(TAG, "cache:" + cache);
+                                            }
+                                        }
+                                        previewStampUs = mBuffInfo.presentationTimeUs;
+
+                                        if (newSleepUs >= 1000) {
+                                            LogUtil.i(TAG, String.format("sleep:%s", newSleepUs / 1000));
+                                            Thread.sleep(newSleepUs / 1000);
+                                        }
+                                        mDecoder.releaseOutputBuffer(index, true);
+                                        if (firstTime) {
+                                            LogUtil.i(TAG, "POST VIDEO_DISPLAYED!!!");
+                                        }
+                                }
+                            } while (index < MediaCodec.INFO_TRY_AGAIN_LATER);
+                        }
+                        mListener.transferCompleted(null);
+                    } catch (Exception e) {
+                        LogUtil.e(TAG, "run Exception: ", e);
+                        mListener.transferError(null);
+                    } finally {
+                        if (socket != null) {
+                            try {
+                                socket.close();
+                            } catch (IOException e) {
+                                e.printStackTrace();
                             }
                         }
-
-                        index = mDecoder.dequeueOutputBuffer(mBuffInfo, 10); //
-                        switch (index) {
-                            case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
-                                LogUtil.i(TAG, "INFO_OUTPUT_BUFFERS_CHANGED");
-                                break;
-                            case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
-                                MediaFormat mf = mDecoder.getOutputFormat();
-                                LogUtil.i(TAG, "INFO_OUTPUT_FORMAT_CHANGED ：" + mf);
-                                break;
-                            case MediaCodec.INFO_TRY_AGAIN_LATER:
-                                LogUtil.i(TAG, "INFO_TRY_AGAIN_LATER");
-                                // 输出为空
-                                break;
-                            default:
-                                long newSleepUs = -1;
-                                boolean firstTime = previewStampUs == 0L;
-                                if (!firstTime) {
-                                    long sleepUs = (mBuffInfo.presentationTimeUs - previewStampUs);
-                                    if (sleepUs > 50000) {
-                                        // 时间戳异常，可能服务器丢帧了。
-                                        LogUtil.w(TAG, "sleep time.too long:" + sleepUs);
-                                        sleepUs = 50000;
-                                    }
-                                    {
-                                        long cache = stamp - previewStampUs;
-                                        newSleepUs = fixSleepTime(sleepUs, cache, -100000);
-                                        // Log.d(TAG, String.format("sleepUs:%d,newSleepUs:%d,Cache:%d", sleepUs, newSleepUs, cache));
-                                        LogUtil.d(TAG, "cache:" + cache);
-                                    }
-                                }
-                                previewStampUs = mBuffInfo.presentationTimeUs;
-
-                                if (newSleepUs >= 1000) {
-                                    LogUtil.i(TAG, String.format("sleep:%s", newSleepUs / 1000));
-                                    Thread.sleep(newSleepUs / 1000);
-                                }
-                                mDecoder.releaseOutputBuffer(index, true);
-                                if (firstTime) {
-                                    LogUtil.i(TAG, "POST VIDEO_DISPLAYED!!!");
-                                }
+                        if (inputStream != null) {
+                            try {
+                                inputStream.close();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
                         }
-                    } while (index < MediaCodec.INFO_TRY_AGAIN_LATER);
+                    }
                 }
-                mListener.transferCompleted(null);
-            } catch (Exception e) {
+            } catch (IOException e) {
                 LogUtil.e(TAG, "run Exception: ", e);
-                mListener.transferError(null);
             } finally {
-                if (socket != null) {
-                    try {
-                        socket.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-                if (inputStream != null) {
-                    try {
-                        inputStream.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
                 if (serverSocket != null) {
                     try {
                         serverSocket.close();

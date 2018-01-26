@@ -1,18 +1,24 @@
 package org.udbuilder.remotecontroller.ui;
 
+import android.content.Context;
 import android.graphics.SurfaceTexture;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
-import android.widget.Button;
+import android.view.ViewConfiguration;
+import android.view.Window;
+import android.view.WindowManager;
 
 import org.udbuilder.remotecontroller.R;
 import org.udbuilder.remotecontroller.transfer.Constant;
+import org.udbuilder.remotecontroller.transfer.Event;
 import org.udbuilder.remotecontroller.transfer.MediaDataReceiver;
 import org.udbuilder.remotecontroller.transfer.TransferListener;
 import org.udbuilder.remotecontroller.utils.LogUtil;
@@ -25,8 +31,6 @@ public class ReceiverActivity extends AppCompatActivity implements TransferListe
 
     private static final String TAG = "ReceiverActivity";
 
-    private Button mBtn;
-    private boolean mRunning = false;
     private MediaDataReceiver mReceiver;
     private Surface mSurface;
     private TextureView mTextureView;
@@ -35,26 +39,16 @@ public class ReceiverActivity extends AppCompatActivity implements TransferListe
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        //去除title
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        //去掉Activity上面的状态栏
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.activity_receiver);
-        mBtn = (Button) findViewById(R.id.btn_execute);
+
         mTextureView = findViewById(R.id.texture_view);
         mTextureView.setSurfaceTextureListener(this);
-    }
-
-    public void onActionExecute(View view) {
-        mRunning = !mRunning;
-        if (mRunning) {
-            mBtn.setText("Stop");
-            if (mReceiver == null) {
-                mReceiver = new MediaDataReceiver(mSurface, this);
-            }
-            mReceiver.start();
-        } else {
-            mBtn.setText("Start");
-            if (mReceiver != null) {
-                mReceiver.stop();
-            }
-        }
+        mTextureView.setOnTouchListener(new EventCaptorTouchListener(this));
     }
 
     private static final int MSG_STARTED = 1;
@@ -70,13 +64,11 @@ public class ReceiverActivity extends AppCompatActivity implements TransferListe
                     int width = data.getInt(Constant.BUNDLE_WIDTH);
                     int height = data.getInt(Constant.BUNDLE_HEIGHT);
                     LogUtil.d(TAG, String.format("handleMessage width=%s, height=%s", width, height));
-                    mBtn.setVisibility(View.GONE);
+                    mSurfaceTexture.setDefaultBufferSize(width, height);
                     break;
                 case MSG_ERROR:
-                    mBtn.setVisibility(View.VISIBLE);
                     break;
                 case MSG_COMPLETED:
-                    mBtn.setVisibility(View.VISIBLE);
                     break;
             }
         }
@@ -138,6 +130,9 @@ public class ReceiverActivity extends AppCompatActivity implements TransferListe
         mSurface = new Surface(surface);
         mSurfaceTexture = surface;
         LogUtil.d(TAG, String.format("onSurfaceTextureAvailable width=%s, height=%s", width, height));
+
+        mReceiver = new MediaDataReceiver(mSurface, this);
+        mReceiver.start();
     }
 
     @Override
@@ -158,5 +153,69 @@ public class ReceiverActivity extends AppCompatActivity implements TransferListe
     @Override
     public void onSurfaceTextureUpdated(SurfaceTexture surface) {
         LogUtil.d(TAG, "onSurfaceTextureUpdated ");
+    }
+
+    private class EventCaptorTouchListener implements View.OnTouchListener {
+
+        private int touchSlop;
+        private GestureDetector mDetector;
+
+        EventCaptorTouchListener(Context context) {
+            touchSlop = ViewConfiguration.get(context.getApplicationContext()).getScaledTouchSlop();
+            mDetector = new GestureDetector(context, new GestureDetector.OnGestureListener() {
+                @Override
+                public boolean onDown(MotionEvent e) {
+                    return true;
+                }
+
+                @Override
+                public void onShowPress(MotionEvent e) {
+                }
+
+                @Override
+                public boolean onSingleTapUp(MotionEvent e) {
+                    Event event = new Event();
+                    event.setType(Event.EVENT_TYPE_TAP);
+                    event.setPointX((int) e.getX());
+                    event.setPointY((int) e.getY());
+                    LogUtil.d(TAG, "onSingleTapUp event=" + event);
+                    mReceiver.sendEvent(event);
+                    return true;
+                }
+
+                @Override
+                public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
+                    if (distanceX > touchSlop || distanceY > touchSlop) {
+                        Event event = new Event();
+                        event.setType(Event.EVENT_TYPE_TAP);
+                        event.setPointX((int) e1.getX());
+                        event.setPointY((int) e1.getY());
+                        event.setToPointX((int) e2.getX());
+                        event.setToPointY((int) e2.getY());
+                        LogUtil.d(TAG, "onScroll event=" + event);
+                    }
+                    return true;
+                }
+
+                @Override
+                public void onLongPress(MotionEvent e) {
+                    LogUtil.d(TAG, "onLongPress ");
+                }
+
+                @Override
+                public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                    LogUtil.d(TAG, "onFling ");
+                    return false;
+                }
+            });
+        }
+
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+            v.performClick();
+            return mDetector.onTouchEvent(event);
+        }
+
+
     }
 }

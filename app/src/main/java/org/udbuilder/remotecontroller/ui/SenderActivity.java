@@ -43,10 +43,10 @@ public class SenderActivity extends AppCompatActivity implements TransferListene
         mBtn = (Button) findViewById(R.id.btn_execute);
         mText = findViewById(R.id.ip);
 
-        DisplayMetrics dm  = this.getResources().getDisplayMetrics();
-        mDpi = dm.densityDpi;
-        mWidth = dm.widthPixels;
-        mHeight = dm.heightPixels;
+        DisplayMetrics dm = this.getResources().getDisplayMetrics();
+        mDpi = /*dm.densityDpi*/1;
+        mWidth = dm.widthPixels / 2;
+        mHeight = dm.heightPixels / 2;
     }
 
 

@@ -23,10 +23,10 @@ public class ByteArrayUtil {
 
     public static int getIntFromByteArray(byte[] dst, int offset) {
         int value= 0;
-        //ÓÉ¸ßÎ»µ½µÍÎ»
+        //ç”±é«˜ä½åˆ°ä½ä½
         for (int i = 0; i < 4; i++) {
             int shift= (4 - 1 - i) * 8;
-            value +=(dst[i + offset] & 0x000000FF) << shift;//Íù¸ßÎ»ÓÎ
+            value +=(dst[i + offset] & 0x000000FF) << shift;//å¾€é«˜ä½æ¸¸
         }
         return value;
 //        int b0 = dst[offset] & 0xFF;
@@ -39,5 +39,11 @@ public class ByteArrayUtil {
     public static void intToByteArrayTwoByte(byte[] dst, int pos, int interger) {
         dst[pos] = (byte) ((interger >> 8) & 0xFF);
         dst[pos + 1] = (byte) ((interger) & 0xFF);
+    }
+
+    public static int twoByteToInt(byte[] dst, int offset) {
+        int b1 = dst[offset] & 0xFF;
+        int b2 = dst[offset + 1] & 0xFF;
+        return (b1 << 8) | b2;
     }
 }
